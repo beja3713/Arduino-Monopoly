@@ -1,0 +1,544 @@
+
+#include <FastLED.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <Servo.h>
+
+int servoPin = 2;
+Servo myServo;
+
+uint8_t button[] {11,10,9,8};
+//Array for each button
+
+#define LEDPropPin 6
+#define LEDPropNum 32
+
+#define LEDPlyrPin 7
+#define LEDPlyrNum 96
+//Defining our LED strips
+
+CRGB LEDProp[LEDPropNum];
+CRGB LEDPlyr[LEDPlyrNum];
+//Declaring our LCD screens
+
+#define ARR_SIZE 4
+LiquidCrystal_I2C lcdArr[ARR_SIZE] = 
+{
+  LiquidCrystal_I2C(35, 20, 4),
+  LiquidCrystal_I2C(37, 20, 4),
+  LiquidCrystal_I2C(38, 20, 4),
+  LiquidCrystal_I2C(39, 20, 4)
+};
+
+// When you exit the program, include this at the end
+//free(lcdArr);
+
+uint8_t plyrPos[4] {92,93,94,95};
+
+int plyrBnk[4] {0,0,0,0};
+
+bool plyrJail[4] {0,0,0,0};
+
+uint8_t i = 0;
+
+uint16_t readTime = 3000;
+uint16_t yesTime = 5000;
+  
+void setup() 
+{
+  for(int j = 0; j < 4; j++)
+  {
+    pinMode(button[j], INPUT_PULLUP);
+  }
+  
+  FastLED.addLeds<WS2812, LEDPropPin, GRB>(LEDProp, LEDPropNum);
+  FastLED.addLeds<WS2812, LEDPlyrPin, GRB>(LEDPlyr, LEDPlyrNum);
+
+  for(int j = 0; j < ARR_SIZE; j++)
+  {
+    lcdArr[j].init();
+    lcdArr[j].backlight();
+  }
+
+  for(int j = 0; j < 96; j++)
+  {
+  LEDPlyr[j] = CRGB(0,0,0);
+  FastLED.show();
+  LEDProp[j] = CRGB(0,0,0);
+  FastLED.show();
+  }
+
+  for(int j = 0; j < 4; j++)
+  {
+    turnOnLightPos(plyrPos[j], j);
+  }
+
+  myServo.attach(servoPin);
+}
+
+void loop()
+{
+  
+  lcdArr[3].init();
+  lcdArr[3].backlight();
+  
+  if(i > 3)
+  {
+    i=0;
+  }
+  
+  for(int j = 0; j < 4; j++)
+  {
+    if(j != i)
+    {
+      lcdArr[j].clear();
+      lcdArr[j].setCursor(0,1);  lcdArr[j].print("Hang tight, it's");
+      lcdArr[j].setCursor(0,2);  lcdArr[j].print("player "); lcdArr[j].print(i+1); lcdArr[j].print("'s turn!");
+      delay(100);
+    }
+  }
+  
+  lcdArr[i].clear();
+  lcdArr[i].setCursor(0,1); lcdArr[i].print("Player " ); lcdArr[i].print(i+1); lcdArr[i].print(",");
+  lcdArr[i].setCursor(0,2); lcdArr[i].print("It's your turn!");
+  delay (readTime);
+  lcdArr[i].clear();
+  lcdArr[i].setCursor(0,1); lcdArr[i].print("Bank Account: $"); lcdArr[i].print(plyrBnk[i]);
+  lcdArr[i].setCursor(0,2); lcdArr[i].print("Press to roll.");
+
+  while(digitalRead(button[i]) == HIGH){}
+  
+  randomSeed(analogRead(0));
+  //uint8_t roll = 18;
+  uint8_t roll = random( 2, 12);
+
+  myServo.write(0);
+  delay(200);
+  for (int pos = 0; pos <= 180; pos ++) 
+  {
+    myServo.write(pos);
+    delay(15);
+  }
+
+  int servoPosition = map(roll, 2, 12, 0, 180);
+  myServo.write(servoPosition);
+   
+  lcdArr[i].clear();
+  lcdArr[i].setCursor(0,1); lcdArr[i].print("Way to go!" );
+  lcdArr[i].setCursor(0,2); lcdArr[i].print("You rolled a "); lcdArr[i].print(roll); lcdArr[i].print(".");
+  delay(readTime); 
+
+  if(plyrJail[i] == 1)
+  {
+    if(roll == 3 || roll == 5 || roll == 7)
+    {
+      lcdArr[i].clear();
+      lcdArr[i].setCursor(0,1); lcdArr[i].print("Congratulations!" );
+      lcdArr[i].setCursor(0,2); lcdArr[i].print("You got out of jail!");
+      plyrJail[i] = 0;
+    }
+    else
+    {
+      lcdArr[i].clear();
+      lcdArr[i].setCursor(0,0); lcdArr[i].print("Sorry, looks like" );
+      lcdArr[i].setCursor(0,1); lcdArr[i].print("you roll the right");
+      lcdArr[i].setCursor(0,2); lcdArr[i].print("number...");
+      lcdArr[i].setCursor(0,3); lcdArr[i].print("Pay bail?");
+
+      delay(yesTime);
+      
+      while(digitalRead(button[i]) == LOW)
+      {
+        plyrBnk[i] = plyrBnk[i] - 50;
+        plyrJail[i] = 0;
+        lcdArr[i].clear();
+        lcdArr[i].setCursor(0,1); lcdArr[i].print("You've paid bail." );
+        lcdArr[i].setCursor(0,2); lcdArr[i].print("Bank Account: $"); lcdArr[i].print(plyrBnk[i]);
+        delay(readTime);
+        break;
+      }
+    }
+  }
+  else
+    {
+      for(uint8_t j = 0; j < roll; j++)
+      {
+        turnOnLightPos(plyrPos[i], i);
+        delay (500);
+        LEDPlyr[plyrPos[i]] = CRGB(0,0,0);
+        plyrPos[i] += 4;
+        if(plyrPos[i] > 95)
+        {
+          plyrPos[i] -= 96;
+          plyrBnk[i] += 500;
+        }
+      }
+      turnOnLightPos(plyrPos[i], i);
+
+      posCheck(plyrPos[i]);
+    }
+    
+  i++;
+}
+
+void turnOnLightPos(uint8_t pos, uint8_t color)
+{ 
+  switch(color)
+  {
+    case 0:
+    LEDPlyr[pos] = CRGB(0,0,100);
+    FastLED.show();
+    break;
+
+    case 1:
+    LEDPlyr[pos] = CRGB(0,100,0);
+    FastLED.show();
+    break;
+    
+    case 2:
+    LEDPlyr[pos] = CRGB(100,50,0);
+    FastLED.show();
+    break;
+    
+    case 3:
+    LEDPlyr[pos] = CRGB(100,0,0);
+    FastLED.show();
+    break;
+  }
+}
+
+int propCost[]
+{
+  500, 200, 700, 300,
+  100, 300, 400, 300,
+  600, 500, 200, 100,
+  400, 200, 500, 700
+};
+
+int propTax[]
+{
+  300, 100, 500, 200,
+  100, 200, 300, 200,
+  400, 400, 100, 100,
+  300, 100, 300, 500
+};
+
+uint8_t propOwn[]
+{
+  4, 4, 4, 4,
+  4, 4, 4, 4,
+  4, 4, 4, 4,
+  4, 4, 4, 4
+};
+
+uint8_t p = 0;
+String location;
+
+void posCheck(uint8_t pos)
+{
+  if(pos >= 0 && pos < 4)
+  {
+    location = "Leeds";
+    p = 0;
+    spotLander(p, location);
+  }
+  
+  if(pos >= 4 && pos < 8)
+  {
+    location = "Eaton";
+    p = 1;
+    spotLander(p, location);
+  }
+  
+  if(pos >= 8 && pos < 12)
+  {
+    spotLanderChest();
+  }
+  
+  if(pos >= 12 && pos < 16)
+  {
+    location = "Imig";
+    p = 2;
+    spotLander(p, location);
+  }
+  
+  if(pos >= 16 && pos < 20)
+  {
+    location = "Ramaley";
+    p = 3;
+    spotLander(p, location);
+  }
+  
+  if(pos >= 20 && pos < 24)
+  {
+
+  }
+  
+  if(pos >= 24 && pos < 28)
+  {
+    location = "Wardenburg";
+    p = 4;
+    spotLander(p, location);  
+  }
+  
+  if(pos >= 28 && pos < 32)
+  {
+    location = "Muenzinger";
+    p = 5;
+    spotLander(p, location);
+  }
+  
+  if(pos >= 32 && pos < 36)
+  {
+    spotLanderChest();
+  }
+  
+  if(pos >= 36 && pos < 40)
+  {
+    location = "Gemmill";
+    p = 6;
+    spotLander(p, location);    
+  }
+  
+  if(pos >= 40 && pos < 44)
+  {
+    location = "Fleming";
+    p = 7;
+    spotLander(p, location);
+  }
+  
+  if(pos >= 44 && pos < 48)
+  {
+    
+  }
+  
+  if(pos >= 48 && pos < 52)
+  {
+    location = "Fiske";
+    p = 8;
+    spotLander(p, location); 
+  }
+  
+  if(pos >= 52 && pos < 56)
+  {
+    location = "C4Cr";
+    p = 9;
+    spotLander(p, location);
+  }
+  
+  if(pos >= 56 && pos < 60)
+  {
+    spotLanderChest();
+  }
+  
+  if(pos >= 60 && pos < 64)
+  {
+    location = "Rec Center";
+    p = 10;
+    spotLander(p, location);
+  }
+  
+  if(pos >= 64 && pos < 68)
+  {
+    location = "Duane";
+    p = 11;
+    spotLander(p, location);
+  }
+  
+  if(pos >= 68 && pos < 72)
+  {
+    lcdArr[i].clear();
+    lcdArr[i].setCursor(0,1); lcdArr[i].print("On no! you have" );
+    lcdArr[i].setCursor(0,2); lcdArr[i].print("to go to jail!");
+    delay(readTime);
+
+    for(uint8_t j = 0; j < 12; j++)
+    {
+      LEDPlyr[plyrPos[i]] = CRGB(0,0,0);
+      plyrPos[i] -= 4;
+      turnOnLightPos(plyrPos[i], i);
+      delay(250);
+    }   
+
+    plyrJail[i]=1;
+  }
+  
+  if(pos >= 72 && pos < 76)
+  {
+    location = "Engineering";
+    p = 12;
+    spotLander(p, location);
+  }
+  
+  if(pos >= 76 && pos < 80)
+  {
+    location = "ITLL";
+    p = 13;
+    spotLander(p, location);
+  }
+  
+  if(pos >= 80 && pos < 84)
+  {
+    spotLanderChest();
+  }
+  
+  if(pos >= 84 && pos < 88)
+  {
+    location = "UMC";
+    p = 14;
+    spotLander(p, location);
+  }
+  
+  if(pos >= 88 && pos < 92)
+  {
+    location = "Folsom";
+    p = 15;
+    spotLander(p, location);
+  }
+  
+  if(pos >= 92 && pos < 96)
+  {
+    
+  }
+}
+
+void turnOnLightProp(uint8_t pos, uint8_t color, bool upGrade)
+{ 
+  if(upGrade == 1)
+  {
+    pos = pos*2 + 1;
+  }
+  else
+  {
+    pos = pos*2;
+  }
+  
+  switch(color)
+  {
+    case 0:
+    LEDProp[pos] = CRGB(0,0,100);
+    FastLED.show();
+    break;
+
+    case 1:
+    LEDProp[pos] = CRGB(0,100,0);
+    FastLED.show();
+    break;
+    
+    case 2:
+    LEDProp[pos] = CRGB(100,50,0);
+    FastLED.show();
+    break;
+    
+    case 3:
+    LEDProp[pos] = CRGB(100,0,0);
+    FastLED.show();
+    break;
+  }
+}
+
+void spotLander(uint8_t p, String location)
+{    
+    lcdArr[i].clear();
+    lcdArr[i].setCursor(0,1); lcdArr[i].print("You've landed on" );
+    lcdArr[i].setCursor(0,2); lcdArr[i].print(location); lcdArr[i].print("!");
+    delay(readTime);
+
+    if(plyrBnk[i] >= propCost[p] && propOwn[p] == 4)
+    {
+      lcdArr[i].clear();
+      lcdArr[i].setCursor(0,0); lcdArr[i].print("No one owns" );
+      lcdArr[i].setCursor(0,1); lcdArr[i].print(location); lcdArr[i].print(",");
+      lcdArr[i].setCursor(0,2); lcdArr[i].print("do you buy it?");
+      lcdArr[i].setCursor(0,3); lcdArr[i].print("Cost $"); lcdArr[i].print(propCost[p]);
+
+      delay(yesTime);
+
+      while(digitalRead(button[i]) == LOW)
+      {
+        plyrBnk[i] = plyrBnk[i] - propCost[p];
+        propOwn[p] = i;
+
+        turnOnLightProp(p, i, 0);
+        
+        lcdArr[i].clear();
+        lcdArr[i].setCursor(0,1); lcdArr[i].print("You've bought" );
+        lcdArr[i].setCursor(0,2); lcdArr[i].print("this property!" );
+        lcdArr[i].setCursor(0,3); lcdArr[i].print("Bank Account: $"); lcdArr[i].print(plyrBnk[i]);
+        delay(readTime);
+        break;
+      }
+    }
+    else if(propOwn[p] != 4 && propOwn[p] != i)
+    {
+      lcdArr[i].clear();
+      lcdArr[i].setCursor(0,0); lcdArr[i].print("Looks like" );
+      lcdArr[i].setCursor(0,1); lcdArr[i].print("player "); lcdArr[i].print(propOwn[p]);
+      lcdArr[i].setCursor(0,2); lcdArr[i].print("owns this, sorry. ");
+      lcdArr[i].setCursor(0,3); lcdArr[i].print("You owe $"); lcdArr[i].print(propTax[p]);
+  
+      plyrBnk[i] = plyrBnk[i] - propTax[p];
+      plyrBnk[propOwn[p]] += propTax[p];
+
+      delay(readTime);
+    }
+    else if(propOwn[p] != 4 && propOwn[p] == i)
+    {
+      lcdArr[i].clear();
+      lcdArr[i].setCursor(0,0); lcdArr[i].print("You landed on a" );
+      lcdArr[i].setCursor(0,1); lcdArr[i].print("square that you own,");
+      lcdArr[i].setCursor(0,2); lcdArr[i].print("upgrade it?");
+      lcdArr[i].setCursor(0,3); lcdArr[i].print("Cost $"); lcdArr[i].print(propTax[p] / 2);
+
+      delay(yesTime);
+
+      while(digitalRead(button[i]) == LOW)
+      {
+        plyrBnk[i] = plyrBnk[i] - propCost[p] / 2;
+        propOwn[p] = 5;
+        propTax[p] = propTax[p] *2;
+
+        turnOnLightProp(p, i, 1);
+        
+        lcdArr[i].clear();
+        lcdArr[i].setCursor(0,1); lcdArr[i].print("You've upgraded" );
+        lcdArr[i].setCursor(0,2); lcdArr[i].print("this property!" );
+        lcdArr[i].setCursor(0,3); lcdArr[i].print("Bank Account: $"); lcdArr[i].print(plyrBnk[i]);
+        delay(readTime);
+        break;
+      }
+    }
+}
+
+int chance;
+
+void spotLanderChest()
+{
+  randomSeed(analogRead(0));
+  chance = random(-4, 6);
+  chance = chance * 100;
+  
+  lcdArr[i].clear();
+  lcdArr[i].setCursor(0,1); lcdArr[i].print("You landed on a" );
+  lcdArr[i].setCursor(0,2); lcdArr[i].print("a chance square!");
+  delay(readTime);
+
+  if(chance >= 0)
+  {
+    plyrBnk[i] += chance; 
+    lcdArr[i].clear();
+    lcdArr[i].setCursor(0,1); lcdArr[i].print("Congratulations!" );
+    lcdArr[i].setCursor(0,2); lcdArr[i].print("You earned $"); lcdArr[i].print(chance);
+    lcdArr[i].setCursor(0,3); lcdArr[i].print("Bank Account: $"); lcdArr[i].print(plyrBnk[i]);
+    delay(readTime);
+  }
+  else
+  {
+    plyrBnk[i] += chance; 
+    lcdArr[i].clear();
+    lcdArr[i].setCursor(0,1); lcdArr[i].print("Im sorry!" );
+    lcdArr[i].setCursor(0,2); lcdArr[i].print("You lost $"); lcdArr[i].print(chance*(-1));
+    lcdArr[i].setCursor(0,3); lcdArr[i].print("Bank Account: $"); lcdArr[i].print(plyrBnk[i]);
+    delay(readTime);
+  }  
+}
